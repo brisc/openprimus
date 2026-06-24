@@ -24,7 +24,7 @@ The `strings_seg*.txt` dumps are also generated here (gitignored).
 From the repo root:
 
 ```bash
-# 1. get the firmware (into firmware/) — pulled from the public OTA endpoint
+# 1. get the firmware (into firmware_binary/) — pulled from the public OTA endpoint
 ./scripts/fetch_firmware.sh           # default region: DE
 
 # 2. extract the 5 segments (into analysis/extracted/)

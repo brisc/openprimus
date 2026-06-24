@@ -1,0 +1,6 @@
+# Open-source Primus firmware — Python dependencies
+# Setup:  python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+# ESPHome 2026.6.x — current release line (2026.6.2 as of writing).
+# ESPHome pins its own IDF/PlatformIO toolchains, so this is the only top-level pin.
+esphome==2026.6.2

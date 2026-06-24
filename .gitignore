@@ -1,12 +1,13 @@
 # ---------------------------------------------------------------------------
-# Firmware binary (DO NOT COMMIT — see README "Reproducing the analysis")
+# Proprietary firmware binary (DO NOT COMMIT — see README "Reproducing the analysis")
 # The WPM Primus firmware is proprietary. Do not redistribute the binary.
-# Use scripts/fetch_firmware.sh to pull it from the public OTA endpoint.
+# Use scripts/fetch_firmware.sh to pull it from the public OTA endpoint; it saves
+# into firmware_binary/ (NOT firmware/, which holds our open-source ESPHome code).
 # ---------------------------------------------------------------------------
 *.bin
 !ghidra_scripts/**/*.java
-firmware/
 KD360X_OTA_*.bin
+firmware_binary/
 
 # ---------------------------------------------------------------------------
 # Large / regeneratable analysis artifacts
@@ -44,6 +45,15 @@ env/
 .vscode/
 *.elf
 *.map
+
+# ---------------------------------------------------------------------------
+# ESPHome firmware build artifacts
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+firmware/.esphome/          # ESPHome build/cache dir
+firmware/secrets.yaml       # real WiFi creds — never commit
+/esphome_build/
 
 # ---------------------------------------------------------------------------
 # Editor / OS

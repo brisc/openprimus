@@ -1,0 +1,205 @@
+# =============================================================================
+# openprimus — REAL HARDWARE config (WPM Primus / KD360X, ESP32-S3)
+# =============================================================================
+# Flash this to the device. It mirrors sim.yaml but targets the actual ESP32-S3
+# peripherals. The display data-pin block is ⚠️ TODO pending a hardware probe
+# (see docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md §2 and §7) — until those pins
+# are confirmed, this config will not boot the display.
+#
+# Confirmed from reverse-engineering (see docs/PRIMUS_RE_RECOVERED.md):
+#   - Touch:  GT911, I2C SDA=GPIO6, SCL=GPIO5, addr probe 0x5D then 0x14
+#   - GPIO:   4 (out), 19 (out), 42 (in pullup), 20 (in)  [actuator/sensor roles]
+#   - ADC:    analogRead on GPIO4 and GPIO19 (pressure + paddle; exact roles ⚠️)
+#   - Flash:  16MB, DIO, 80 MHz
+# =============================================================================
+
+substitutions:
+  name: openprimus
+  friendly_name: "openPrimus"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  includes:
+    - components/primus_brew
+  on_boot:
+    - priority: 600
+      then:
+        - logger.log: "openPrimus booting"
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf          # REQUIRED — parallel RGB + PSRAM need ESP-IDF, not Arduino
+  flash_size: 16MB
+  flash_mode: dio          # recovered from the stock image header
+  flash_frequency: 80mhz
+
+psram: true                # framebuffer lives in PSRAM
+
+# ---------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------
+wifi:
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+  ap: {}                   # captive portal fallback
+captive_portal: {}
+web_server: {}             # on-device web UI + external control surface
+ota:
+  - platform: esphome
+    password: ""
+
+# ---------------------------------------------------------------------------
+# Touch — GT911 (fully recovered)
+# ---------------------------------------------------------------------------
+i2c:
+  - id: touch_bus
+    sda: 6                 # confirmed: Wire.begin(SDA=6, SCL=5)
+    scl: 5
+    scan: true
+touchscreen:
+  - platform: gt911
+    id: primus_touch
+    i2c_id: touch_bus
+    # GT911 auto-probes address 0x5D then 0x14 (confirmed in stock setup).
+
+# ---------------------------------------------------------------------------
+# Display — native ESP32-S3 parallel RGB panel
+# ---------------------------------------------------------------------------
+# ⚠️ BLOCKER: the ~20 data/timing pins below are PLACEHOLDERS. They live in the
+# stock GFX driver constructor which we couldn't cleanly decompile. Until
+# someone probes the physical board (continuity check display-FPC → ESP32 GPIO),
+# this block cannot drive the real panel. Use sim.yaml for UI work meanwhile.
+#
+# Driver note: use `mipi_rgb` (the actively-maintained parallel-RGB driver).
+# `rpi_dpi_rgb` is deprecated as of ESPHome 2026.6.
+display:
+  - platform: mipi_rgb
+    id: primus_display
+    color_order: RGB
+    data_pins:                       # ⚠️ TODO — placeholders, NOT real pins
+      red:   [0, 0, 0, 0, 0]         # R0..R4
+      green: [0, 0, 0, 0, 0, 0]      # G0..G5
+      blue:  [0, 0, 0, 0, 0]         # B0..B4
+    de_pin:    0                     # ⚠️ TODO
+    hsync_pin: 0                     # ⚠️ TODO
+    vsync_pin: 0                     # ⚠️ TODO
+    pclk_pin:  0                     # ⚠️ TODO
+    dimensions:                      # ⚠️ TODO — confirm panel resolution
+      width: 412
+      height: 412
+    # timing values come from the panel datasheet once the panel is identified.
+
+# ---------------------------------------------------------------------------
+# LVGL UI — IDENTICAL to sim.yaml (this is the shared UI definition)
+# ---------------------------------------------------------------------------
+# In practice this block should live in a shared include so sim.yaml and
+# primus.yaml stay in sync. Kept inline here for clarity in the first scaffold.
+lvgl:
+  displays: [primus_display]
+  touchscreens: [primus_touch]
+  color_depth: 16
+  default_font: roboto_24
+
+  pages:
+    - id: main_page
+      bg_color: color_black
+      widgets:
+        - arc:
+            id: brew_progress_ring
+            size: 400
+            bg_color: color_navy
+            indicated_color: color_teal
+            start_angle: 0
+            end_angle: 360
+            pad_all: 6
+        - label:
+            id: status_label
+            text: "openPrimus"
+            align_to: brew_progress_ring
+            align: center
+            y: -30
+            text_color: color_white
+        - label:
+            id: pressure_label
+            text: "0.0 bar"
+            align_to: brew_progress_ring
+            align: center
+            y: 10
+            text_color: color_silver
+        - button:
+            id: brew_btn
+            text: "Brew"
+            align_to: brew_progress_ring
+            align: center
+            y: 60
+            on_click:
+              - primus_brew.start_shot:
+                  mode: CLASSIC_9BAR
+
+# ---------------------------------------------------------------------------
+# Actuators (pump / solenoid) — roles of GPIO4/19 ⚠️ need HW confirmation
+# ---------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: pump_pwm
+    pin: 4                 # ⚠️ confirm: pump vs solenoid
+    frequency: 50Hz
+  - platform: ledc
+    id: aux_pwm
+    pin: 19                # ⚠️ confirm role
+    frequency: 50Hz
+
+# ---------------------------------------------------------------------------
+# Sensors — pressure + paddle on ADC; calibration from recovered NVS defaults
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: adc
+    id: pressure_adc
+    pin: 4                 # ⚠️ confirm: pressure vs paddle
+    name: "Pressure ADC"
+    update_interval: 50ms
+    # Calibration (recovered from stock NVS init):
+    #   pressure(bar) = (adc - 540) * 0.008 + (-3.0246)
+    filters:
+      - calibrate_linear:
+          method: exact
+          datapoints:
+            - 0.0 -> -3.0246
+            - 1.0 -> 0.008   # placeholder slope mapping — refine once roles confirmed
+  - platform: adc
+    id: paddle_adc
+    pin: 19                # ⚠️ confirm: paddle vs pressure
+    name: "Paddle ADC"
+    update_interval: 50ms
+
+# ---------------------------------------------------------------------------
+# Status LED (NeoPixel) — pin ⚠️ TODO
+# ---------------------------------------------------------------------------
+# light:
+#   - platform: neopixelbus
+#     type: GRB
+#     pin: TODO
+#     num_leds: 1
+#     name: "Status LED"
+
+# ---------------------------------------------------------------------------
+# The custom brew controller (real-time loop in a FreeRTOS task)
+# ---------------------------------------------------------------------------
+primus_brew:
+  id: brew_controller
+  pump: pump_pwm
+  pressure_sensor: pressure_adc
+  paddle_sensor: paddle_adc
+  # NVS calibration keys mirror the stock schema so we read factory calibration:
+  #   Calibration/MinPressureADC = 540
+  #   Calibration/PressureSlope  = 0.008
+  #   Calibration/PresIntercept  = -3.0246
+  #   Calibration/MinPaddle      = 2000
+  #   Calibration/MaxPaddle      = 4000
+
+logger:
+  level: DEBUG

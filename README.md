@@ -89,7 +89,7 @@ shipped.
 ```bash
 # 1. Fetch the firmware from the device's own public OTA endpoint
 ./scripts/fetch_firmware.sh           # default region: DE
-#    → saves firmware/KD360X_OTA_1.1.54_DE_20260623.bin
+#    → saves firmware_binary/KD360X_OTA_1.1.54_DE_20260623.bin
 
 # 2. Extract the 5 memory segments
 python3 scripts/extract_segments.py
@@ -120,6 +120,19 @@ loop. ESPHome gives us, for free, the ~90 % of the firmware that is plumbing
 (display, touch, WiFi, OTA, sensor drivers); only the brew control loop needs
 hand-written real-time C++.
 
+**The simulator runs today** — you can build and click-test the LVGL UI on your
+PC with no ESP32 hardware. This is the fastest way to contribute UI work before
+the display pinout is confirmed on real hardware:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r firmware/requirements.txt
+cp firmware/secrets.yaml.example firmware/secrets.yaml   # edit WiFi creds
+esphome run firmware/sim.yaml        # → a window opens with the UI
+```
+
+(Linux: `sudo apt install libsdl2-dev` · macOS: `brew install sdl2` · Windows: use WSL2)
+
 **Key decisions** (full rationale in
 [`docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md`](docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md)):
 
@@ -129,19 +142,18 @@ hand-written real-time C++.
 - Brew loop: a **FreeRTOS task** in a custom `primus_brew` component (tighter than ESPHome's ~7–16 ms main loop)
 - NVS: mirrors the stock schema so a flashed `primus-os` reads the unit's factory calibration
 
-Target layout:
+Layout (`firmware/`):
 ```
-primus-os/
-├── esphome/
-│   └── primus.yaml                 ← declarative config (display, touch, sensors, WiFi, OTA, LVGL)
+firmware/
+├── sim.yaml                       ← SDL2 simulator — runs the UI on your PC today
+├── primus.yaml                    ← real-hardware config (display pins = ⚠️ TODO)
 ├── components/
-│   └── primus_brew/                ← custom component: the real-time brew controller
-│       ├── __init__.py              YAML schema + config validation
-│       ├── brew_control.cpp         FreeRTOS task: pressure PID + VPS profile engine
-│       ├── sensors.cpp              linear calibration (recovered slope/intercept)
-│       └── boiler.cpp               the recovered fill algorithm
-└── data/ui/                         LVGL screen definitions / fonts
+│   └── primus_brew/               ← custom component: the real-time brew controller
+│       └── __init__.py             YAML schema + config validation (C++ stub next)
+├── requirements.txt                pins esphome==2026.6.2
+└── secrets.yaml.example            WiFi credential template
 ```
+See [`firmware/README.md`](firmware/README.md) for the full setup and status.
 
 ---
 
@@ -149,15 +161,15 @@ primus-os/
 
 **Done:** full platform/architecture documentation, OTA protocol, NVS schema,
 calibration math, boiler algorithm, brew state-machine structure, hardware pin
-map (partial), Ghidra decompilation pipeline, and the **ESPHome open-firmware
-architecture**.
+map (partial), Ghidra decompilation pipeline, the ESPHome open-firmware
+architecture, and a **runnable UI simulator** (`firmware/sim.yaml`).
 
 **Next:**
 - [ ] Recover the RGB-panel data pin map (HW probe — logic analyzer / silkscreen)
 - [ ] Decompile the StateControl inner control loop → extract PID coefficients
-- [ ] Probe hardware to confirm GPIO4/19 pressure-vs-paddle roles, flow meter pin
-- [ ] Scaffold `primus-os` ESPHome project (`esphome/primus.yaml` + `components/primus_brew/`)
-- [ ] Confirm remaining sensor/actuator roles on real hardware (pressure vs paddle ADC, flow meter)
+- [ ] Confirm remaining sensor/actuator roles on real hardware (pressure vs paddle ADC, flow meter, GPIO4/19 pump-vs-solenoid)
+- [ ] Rebuild the 22 LVGL screens (contributor-friendly via the simulator — no hardware needed)
+- [ ] Implement the `primus_brew` C++ real-time control loop (pressure PID + VPS profiling)
 
 Contributions welcome — see
 [`docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md §7`](docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md)

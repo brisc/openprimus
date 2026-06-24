@@ -16,7 +16,7 @@ ENDPOINT_PRIMARY="https://wpmfirmwareprod.blob.core.windows.net/firmware/"
 ENDPOINT_FALLBACK="https://wpm-firmware-updates-g9hfehacbzaphxfj.a01.azurefd.net/firmware/"
 LIST_PATH="KD360X/KD360X_FW_lists.txt"
 
-OUT_DIR="$(cd "$(dirname "$0")/.." && pwd)/firmware"
+OUT_DIR="$(cd "$(dirname "$0")/.." && pwd)/firmware_binary"
 mkdir -p "$OUT_DIR"
 
 echo ">> Fetching firmware list for region '$REGION'..."

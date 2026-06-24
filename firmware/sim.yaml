@@ -1,0 +1,129 @@
+# =============================================================================
+# openprimus — SIMULATOR config (runs on your PC, no ESP32 needed)
+# =============================================================================
+# This config renders the LVGL UI in an SDL2 window on your computer, so you can
+# design and click-test the screens before any hardware exists. The LVGL UI is
+# IDENTICAL to the real firmware — only the `display` driver differs.
+#
+# Run:
+#   esphome run firmware/sim.yaml           # or: esphome logs / config / compile
+#
+# Requirements (Linux):  sudo apt install libsdl2-dev
+# Requirements (macOS):  brew install sdl2
+# Requirements (Windows): use WSL2 + apt install libsdl2-dev
+# =============================================================================
+
+# Substitute values needed by `substitutions` and `secrets` even in sim mode.
+substitutions:
+  name: openprimus-sim
+  friendly_name: "openPrimus (simulator)"
+
+# The "host" platform compiles ESPHome for your PC instead of an ESP32.
+host: {}
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  # Pull in the local custom component (stubbed for now).
+  includes:
+    - components/primus_brew
+
+# Stub networking so the config validates without real WiFi.
+wifi:
+  networks:
+    - ssid: "${wifi_ssid}"
+      password: "${wifi_password}"
+  ap: {}  # fallback AP for captive-portal parity with the real firmware
+captive_portal: {}
+
+# ---------------------------------------------------------------------------
+# SIMULATED display — SDL2 window on the host
+# ---------------------------------------------------------------------------
+# The Primus uses a ROUND display. We render a square window and constrain the
+# UI to a circle via an LVGL mask. Resolution is a placeholder until confirmed
+# on real hardware (the stock GFX constructor wasn't cleanly decompilable).
+display:
+  - platform: sdl2
+    id: primus_display
+    show_test_card: false
+    dimensions:
+      width: 412        # ← placeholder round-panel diameter; confirm on HW
+      height: 412
+    # SDL2 needs no backlight/pins — it's a host window.
+
+# ---------------------------------------------------------------------------
+# LVGL UI — shared with primus.yaml (the real hardware config)
+# ---------------------------------------------------------------------------
+# A minimal first screen so the window shows something on launch. The full
+# 22-screen set (see docs/PRIMUS_FIRMWARE_INTERNALS.md §11) is built out here.
+lvgl:
+  displays: [primus_display]
+  color_depth: 16
+  default_font: roboto_24
+  # No real touchscreen in sim; mouse/keyboard drive the SDL2 window natively.
+
+  # --- A first screen: status + a brew button (placeholder) ---
+  pages:
+    - id: main_page
+      bg_color: color_black
+      widgets:
+        # Circular mask: clip everything to a disc so the layout matches the
+        # round physical display.
+        - arc:
+            id: brew_progress_ring
+            x: 0
+            y: 0
+            size: 400
+            bg_color: color_navy
+            indicated_color: color_teal
+            start_angle: 0
+            end_angle: 360
+            pad_all: 6
+        - label:
+            id: status_label
+            text: "openPrimus"
+            x: 50%
+            y: 40%
+            align_to: brew_progress_ring
+            align: center
+            text_color: color_white
+        - label:
+            id: pressure_label
+            text: "0.0 bar"
+            x: 50%
+            y: 60%
+            align_to: brew_progress_ring
+            align: center
+            text_color: color_silver
+        - button:
+            id: brew_btn
+            text: "Brew"
+            x: 50%
+            y: 80%
+            align_to: brew_progress_ring
+            align: center
+            on_click:
+              - logger.log: "Brew button pressed (sim)"
+
+# ---------------------------------------------------------------------------
+# Stub sensors — give the UI something to show in the simulator
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: template
+    id: sim_pressure
+    name: "Pressure (sim)"
+    unit_of_measurement: "bar"
+    update_interval: 1s
+    lambda: "return 0.0f;"
+  - platform: template
+    id: sim_temperature
+    name: "Boiler temperature (sim)"
+    unit_of_measurement: "°C"
+    update_interval: 5s
+    lambda: "return 0.0f;"
+
+# ---------------------------------------------------------------------------
+# Logger — visible in the terminal alongside the SDL2 window
+# ---------------------------------------------------------------------------
+logger:
+  level: DEBUG

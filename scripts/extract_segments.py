@@ -9,7 +9,7 @@ Mirrors the layout that esptool reports:
   seg3 IROM  0x42000020   (main app code)
   seg4 IRAM  0x40376988   (fast code, entry point)
 
-Usage:  python3 scripts/extract_segments.py firmware/KD360X_OTA_*.bin
+Usage:  python3 scripts/extract_segments.py firmware_binary/KD360X_OTA_*.bin
         python3 scripts/extract_segments.py   # auto-finds the firmware
 """
 import os, sys, struct
@@ -19,7 +19,7 @@ def main():
         bin_path = sys.argv[1]
     else:
         import glob
-        matches = glob.glob("firmware/*.bin")
+        matches = glob.glob("firmware_binary/*.bin")
         if not matches:
             sys.exit("No firmware found. Run scripts/fetch_firmware.sh first, "
                      "or pass the .bin path as an argument.")
