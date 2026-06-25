@@ -1,0 +1,98 @@
+# =============================================================================
+# config.yaml — brewing configuration (HA-exposable number entities)
+# =============================================================================
+# All brew parameters live here as template `number:` entities. They are:
+#   - Controllable from Home Assistant (appear as number entities / sliders)
+#   - Persisted across reboots (restore_value: true)
+#   - Read by the sensor simulations (sim.yaml) and, on real hardware, by the
+#     actual PID/pump control loop (primus.yaml -> primus_brew component)
+#
+# These mirror the stock firmware's NVS `Settings` namespace. Sliders in the
+# on-device Settings page (settings_page.yaml) write back here via number.set.
+# =============================================================================
+
+number:
+  # --- Temperature ---
+  - platform: template
+    id: target_temp
+    name: Target Temperature
+    min_value: 80.0
+    max_value: 100.0
+    step: 0.5
+    optimistic: true
+    initial_value: 93.0
+    restore_value: true
+    unit_of_measurement: "°C"
+    device_class: temperature
+    mode: SLIDER
+    icon: mdi:thermometer
+
+  # --- Pressure ---
+  - platform: template
+    id: target_pressure
+    name: Target Pressure
+    min_value: 1.0
+    max_value: 12.0
+    step: 0.1
+    optimistic: true
+    initial_value: 9.0
+    restore_value: true
+    unit_of_measurement: "bar"
+    device_class: pressure
+    mode: SLIDER
+    icon: mdi:gauge
+
+  # --- Pre-infusion ---
+  - platform: template
+    id: preinfusion_pressure
+    name: Pre-infusion Pressure
+    min_value: 0.0
+    max_value: 4.0
+    step: 0.1
+    optimistic: true
+    initial_value: 2.0
+    restore_value: true
+    unit_of_measurement: "bar"
+    device_class: pressure
+    mode: SLIDER
+    icon: mdi:water-pump
+
+  - platform: template
+    id: preinfusion_time
+    name: Pre-infusion Duration
+    min_value: 0.0
+    max_value: 10.0
+    step: 0.5
+    optimistic: true
+    initial_value: 3.0
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: SLIDER
+    icon: mdi:timer-outline
+
+  # --- Shot targets (volumetric / timed) ---
+  - platform: template
+    id: shot_target_volume
+    name: Shot Target Volume
+    min_value: 10.0
+    max_value: 60.0
+    step: 1.0
+    optimistic: true
+    initial_value: 36.0
+    restore_value: true
+    unit_of_measurement: "ml"
+    mode: SLIDER
+    icon: mdi:cup-water
+
+  - platform: template
+    id: shot_target_time
+    name: Shot Target Time
+    min_value: 10.0
+    max_value: 60.0
+    step: 1.0
+    optimistic: true
+    initial_value: 28.0
+    restore_value: true
+    unit_of_measurement: "s"
+    mode: SLIDER
+    icon: mdi:timer

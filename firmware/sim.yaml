@@ -45,6 +45,9 @@ lvgl:
 # ---------------------------------------------------------------------------
 packages:
   common:    !include packages/common.yaml
+  config:    !include packages/config.yaml
   topbar:    !include packages/topbar.yaml
   home_menu: !include packages/home_menu.yaml
   brew_page: !include packages/brew_page.yaml
+  chart:     !include packages/chart.yaml
+  settings:  !include packages/settings_page.yaml

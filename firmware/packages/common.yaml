@@ -85,6 +85,18 @@ globals:
     type: float
     restore_value: no
     initial_value: "0.0"
+  - id: brew_temp_val
+    type: float
+    restore_value: no
+    initial_value: "90.0"
+  - id: brew_weight_val
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: brew_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
   - id: current_mode
     type: std::string
     restore_value: no
@@ -116,29 +128,81 @@ globals:
     initial_value: "false"
 
 # ---------------------------------------------------------------------------
-# Simulated sensors — animated telemetry.
+# Simulated sensors — animated telemetry, driven by the config number entities.
 # On real hardware these become real `adc` sensors with calibration filters;
-# the globals + math here are a stand-in until then.
+# the math here is a stand-in until then.
 # ---------------------------------------------------------------------------
 sensor:
+  # Pressure — ramps through pre-infusion phase, then to target extraction
+  # pressure. Reads config: preinfusion_pressure, preinfusion_time, target_pressure.
   - platform: template
     id: sim_pressure
     name: "Pressure"
     unit_of_measurement: "bar"
+    device_class: pressure
+    accuracy_decimals: 1
     update_interval: 500ms
     lambda: |-
       if (id(brew_active)) {
-        float target = 9.0;
-        id(brew_pressure_val) += (target - id(brew_pressure_val)) * 0.15;
-        id(brew_pressure_val) += (float)(rand() % 100 - 50) / 250.0;
+        // Compute elapsed time of the current brew.
+        uint32_t now = millis();
+        float elapsed = (id(brew_start_ms) != 0 && now >= id(brew_start_ms))
+                        ? (now - id(brew_start_ms)) / 1000.0f : 0.0f;
+        // Phase target: pre-infusion pressure during preinfusion_time, then full target.
+        float pi_p   = id(preinfusion_pressure).state;
+        float pi_t   = id(preinfusion_time).state;
+        float tgt    = id(target_pressure).state;
+        float target = (elapsed < pi_t) ? pi_p : tgt;
+        // exponential approach toward the phase target + jitter
+        id(brew_pressure_val) += (target - id(brew_pressure_val)) * 0.15f;
+        id(brew_pressure_val) += (float)(rand() % 100 - 50) / 250.0f;
       } else {
-        id(brew_pressure_val) *= 0.8;
+        id(brew_pressure_val) *= 0.8f;
       }
       if (id(brew_pressure_val) < 0) id(brew_pressure_val) = 0;
       return id(brew_pressure_val);
+
+  # Temperature — slowly drifts toward the configured target_temp.
   - platform: template
     id: sim_temperature
     name: "Temperature"
     unit_of_measurement: "°C"
+    device_class: temperature
+    accuracy_decimals: 1
     update_interval: 1s
-    lambda: "return 93.0;"
+    lambda: |-
+      float target = id(target_temp).state;
+      id(brew_temp_val) += (target - id(brew_temp_val)) * 0.02f;
+      return id(brew_temp_val);
+
+  # Flow rate — derived from pressure (higher pressure => higher flow), +noise.
+  # Rough model: flow ~ pressure * k, k ~= 1.2 ml/s/bar.
+  - platform: template
+    id: sim_flow_rate
+    name: "Flow Rate"
+    unit_of_measurement: "ml/s"
+    accuracy_decimals: 1
+    update_interval: 500ms
+    lambda: |-
+      if (!id(brew_active)) return 0.0f;
+      float p = id(brew_pressure_val);
+      float flow = p * 1.2f + (float)(rand() % 60 - 30) / 100.0f;
+      if (flow < 0) flow = 0;
+      return flow;
+
+  # Shot weight — cumulative integration of flow rate over the brew (1g ~= 1ml).
+  # Resets to 0 when a brew starts.
+  - platform: template
+    id: sim_shot_weight
+    name: "Shot Weight"
+    unit_of_measurement: "g"
+    accuracy_decimals: 1
+    state_class: measurement
+    update_interval: 500ms
+    lambda: |-
+      if (id(brew_active)) {
+        // 500ms interval => flow(ml/s) * 0.5s = ml this tick.
+        id(brew_weight_val) += id(sim_flow_rate).state * 0.5f;
+      }
+      return id(brew_weight_val);
+

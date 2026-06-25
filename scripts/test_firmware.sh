@@ -56,7 +56,7 @@ fi
 
 # --- 3. Structural checks on the modular packages ---
 echo "[3/3] Checking package structure..."
-EXPECTED_PKGS=(common topbar home_menu brew_page)
+EXPECTED_PKGS=(common config topbar home_menu brew_page chart settings_page)
 for pkg in "${EXPECTED_PKGS[@]}"; do
   if [ -f "firmware/packages/${pkg}.yaml" ]; then
     ok "package ${pkg}.yaml present"

@@ -73,6 +73,33 @@ lvgl:
             width: 220
             height: 14
 
+        # Flow rate + cumulative shot weight
+        - label:
+            id: flow_label
+            text: "0.0 ml/s  0.0g"
+            text_color: 0xB0BEC5
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # Pressure gauge arc (live, filled by the interval).
+        - arc:
+            id: pressure_arc
+            width: 100
+            height: 100
+            value: 0
+            min_value: 0
+            max_value: 12
+            mode: NORMAL
+            start_angle: 135
+            end_angle: 135          # grows clockwise as pressure rises
+            indicator:
+              line_color: 0x4FC3F7
+              line_width: 8
+            main:
+              line_color: 0x1E2A36
+              line_width: 8
+
         # Start / Stop toggle (text-only update — safe; never use bg_color in .update)
         - button:
             id: brew_btn
@@ -90,6 +117,13 @@ lvgl:
                   condition:
                     lambda: "return id(brew_active);"
                   then:
+                    # Reset shot weight + chart history for a fresh brew.
+                    - globals.set:
+                        id: brew_weight_val
+                        value: "0.0"
+                    - globals.set:
+                        id: _chart_count
+                        value: "0"
                     - lvgl.label.update:
                         id: status_label
                         text: "Heating up..."
@@ -124,13 +158,9 @@ lvgl:
 
 # ---------------------------------------------------------------------------
 # Live updates — guarded: NaN-check every value, return float for arc value.
+# (brew_start_ms global now lives in common.yaml so the sim_pressure sensor
+#  can also read it for phase timing.)
 # ---------------------------------------------------------------------------
-globals:
-  - id: brew_start_ms
-    type: uint32_t
-    restore_value: no
-    initial_value: "0"
-
 interval:
   - interval: 500ms
     then:
@@ -152,12 +182,13 @@ interval:
                 float elapsed = (start != 0 && now >= start) ? (now - start) / 1000.0f : 0.0f;
                 float p = id(sim_pressure).state;
                 if (p != p) p = 0.0f;  // NaN guard
-                float target = 9.0f;
+                float pi_t = id(preinfusion_time).state;
+                float tgt  = id(target_pressure).state;
                 const char *phase;
-                if (elapsed < 1.0f)         phase = "Pre-infusion...";
-                else if (p < target - 0.5f) phase = "Ramping up...";
-                else if (p < target + 0.5f) phase = "Extracting at 9 bar";
-                else                        phase = "Extracting";
+                if (elapsed < pi_t)          phase = "Pre-infusion...";
+                else if (p < tgt - 0.5f)     phase = "Ramping up...";
+                else if (p < tgt + 0.5f)     phase = "Extracting";
+                else                         phase = "Extracting";
                 id(_phase_str) = phase;
                 id(_elapsed_val) = elapsed;
                 id(_press_val) = p;
@@ -186,8 +217,9 @@ interval:
                 text: !lambda |-
                   float p = id(_press_val);
                   if (p != p) p = 0.0f;
+                  float tgt = id(target_pressure).state;
                   static char buf[24];
-                  snprintf(buf, sizeof(buf), "%.1f / 9.0 bar", p);
+                  snprintf(buf, sizeof(buf), "%.1f / %.1f bar", p, tgt);
                   return buf;
             - lvgl.label.update:
                 id: timer_label
@@ -196,5 +228,22 @@ interval:
                   if (e != e) e = 0.0f;
                   static char buf[16];
                   snprintf(buf, sizeof(buf), "%.1fs", e);
+                  return buf;
+            - lvgl.label.update:
+                id: temp_label
+                text: !lambda |-
+                  float t = id(sim_temperature).state;
+                  if (t != t) t = 0.0f;
+                  static char buf[16];
+                  snprintf(buf, sizeof(buf), "%.1fC", t);
+                  return buf;
+            - lvgl.label.update:
+                id: flow_label
+                text: !lambda |-
+                  float f = id(sim_flow_rate).state;
+                  if (f != f) f = 0.0f;
+                  static char buf[16];
+                  snprintf(buf, sizeof(buf), "%.1f ml/s  %.1fg",
+                           f, id(sim_shot_weight).state);
                   return buf;
 

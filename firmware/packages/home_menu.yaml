@@ -141,3 +141,14 @@ lvgl:
                   id: current_mode
                   value: '"Drip Coffee"'
               - lvgl.page.show: brew_page
+
+        # --- Settings ---
+        - button:
+            text: "\U0000E8B8 Settings"          # tune icon
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - lvgl.page.show: settings_page

@@ -1,0 +1,46 @@
+# =============================================================================
+# chart.yaml — live pressure visualization on the brew screen
+# =============================================================================
+# ESPHome's LVGL lambdas can't call lv_canvas_* directly (incomplete lv_obj_t
+# type), and there's no native chart widget — so for now we drive a pressure
+# GAUGE (arc widget) that fills clockwise as pressure rises. A proper line-chart
+# of the full pressure profile will come via a C++ component (primus_chart.h is
+# staged for that) once the real-time brew controller is in place.
+#
+# The arc value (0-12) maps directly to pressure (bar). A history buffer is kept
+# for future use.
+# =============================================================================
+
+# History ring buffer (kept for the future line-chart; arc doesn't need it yet).
+globals:
+  - id: _chart_hist
+    type: float[120]
+    restore_value: no
+  - id: _chart_count
+    type: int
+    restore_value: no
+    initial_value: "0"
+
+# ---------------------------------------------------------------------------
+# Update the pressure gauge arc from the current pressure reading.
+# ---------------------------------------------------------------------------
+interval:
+  - interval: 500ms
+    then:
+      - if:
+          condition:
+            lvgl.page.is_showing: brew_page
+          then:
+            # Record history (for future line chart) + drive the arc gauge.
+            - lambda: |-
+                float p = id(sim_pressure).state;
+                if (p != p) p = 0.0f;  // NaN guard
+                int idx = id(_chart_count) % 120;
+                id(_chart_hist)[idx] = p;
+                id(_chart_count) = id(_chart_count) + 1;
+            - lvgl.arc.update:
+                id: pressure_arc
+                value: !lambda |-
+                  float p = id(sim_pressure).state;
+                  if (p != p) p = 0.0f;
+                  return p;

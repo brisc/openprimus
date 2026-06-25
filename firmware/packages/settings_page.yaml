@@ -1,0 +1,176 @@
+# =============================================================================
+# settings_page.yaml — Page 3: brewing configuration via on-device sliders
+# =============================================================================
+# Each config number (defined in config.yaml) has a slider here. LVGL sliders
+# are integer-only, so floats are scaled (e.g. temperature ×10).
+# Each slider's on_change writes back to the number entity (number.set) so the
+# change is persisted + exposed to Home Assistant.
+# =============================================================================
+
+lvgl:
+  pages:
+    - id: settings_page
+      width: 360
+      height: 360
+      bg_color: 0x000000
+      bg_opa: COVER
+      pad_left: 70
+      pad_right: 70
+      pad_top: 20
+      pad_bottom: 20
+      radius: 255
+      border_color: 0x4FC3F7
+      border_width: 3
+      border_opa: COVER
+      layout:
+        type: FLEX
+        flex_flow: COLUMN
+        flex_align_main: CENTER
+        flex_align_cross: CENTER
+        pad_row: 4
+      widgets:
+        - label:
+            text: "\U0000E8B8 Settings"        # tune icon
+            text_color: 0x4FC3F7
+            text_font: font_title
+            width: 220
+            height: 20
+
+        # --- Target Temperature (80.0-100.0 °C, slider 800-1000) ---
+        - label:
+            text: "Target Temp"
+            text_color: 0x90A4AE
+            text_font: font_small
+            width: 220
+            height: 12
+        - slider:
+            id: temp_slider
+            min_value: 800
+            max_value: 1000
+            value: 930
+            width: 220
+            height: 16
+            on_change:
+              - number.set:
+                  id: target_temp
+                  value: !lambda "return x / 10.0f;"
+              - lvgl.label.update:
+                  id: temp_value_label
+                  text: !lambda |-
+                    static char b[16];
+                    snprintf(b, sizeof(b), "%.1fC", x / 10.0f);
+                    return b;
+        - label:
+            id: temp_value_label
+            text: "93.0C"
+            text_color: 0xFFFFFF
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # --- Target Pressure (1.0-12.0 bar, slider 10-120) ---
+        - label:
+            text: "Target Pressure"
+            text_color: 0x90A4AE
+            text_font: font_small
+            width: 220
+            height: 12
+        - slider:
+            id: pressure_slider
+            min_value: 10
+            max_value: 120
+            value: 90
+            width: 220
+            height: 16
+            on_change:
+              - number.set:
+                  id: target_pressure
+                  value: !lambda "return x / 10.0f;"
+              - lvgl.label.update:
+                  id: pressure_value_label
+                  text: !lambda |-
+                    static char b[16];
+                    snprintf(b, sizeof(b), "%.1f bar", x / 10.0f);
+                    return b;
+        - label:
+            id: pressure_value_label
+            text: "9.0 bar"
+            text_color: 0xFFFFFF
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # --- Pre-infusion Pressure (0.0-4.0 bar, slider 0-40) ---
+        - label:
+            text: "Pre-infusion Pressure"
+            text_color: 0x90A4AE
+            text_font: font_small
+            width: 220
+            height: 12
+        - slider:
+            id: pi_pressure_slider
+            min_value: 0
+            max_value: 40
+            value: 20
+            width: 220
+            height: 16
+            on_change:
+              - number.set:
+                  id: preinfusion_pressure
+                  value: !lambda "return x / 10.0f;"
+              - lvgl.label.update:
+                  id: pi_pressure_value_label
+                  text: !lambda |-
+                    static char b[16];
+                    snprintf(b, sizeof(b), "%.1f bar", x / 10.0f);
+                    return b;
+        - label:
+            id: pi_pressure_value_label
+            text: "2.0 bar"
+            text_color: 0xFFFFFF
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # --- Shot Target Volume (10-60 ml, slider 10-60) ---
+        - label:
+            text: "Shot Volume"
+            text_color: 0x90A4AE
+            text_font: font_small
+            width: 220
+            height: 12
+        - slider:
+            id: volume_slider
+            min_value: 10
+            max_value: 60
+            value: 36
+            width: 220
+            height: 16
+            on_change:
+              - number.set:
+                  id: shot_target_volume
+                  value: !lambda "return (float) x;"
+              - lvgl.label.update:
+                  id: volume_value_label
+                  text: !lambda |-
+                    static char b[16];
+                    snprintf(b, sizeof(b), "%d ml", x);
+                    return b;
+        - label:
+            id: volume_value_label
+            text: "36 ml"
+            text_color: 0xFFFFFF
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # --- Back button ---
+        - button:
+            text: "\U0000E5C4 Back"            # arrow_back icon
+            bg_color: 0x37474F
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 120
+            height: 32
+            on_click:
+              - lvgl.page.show: home_page
