@@ -1,0 +1,141 @@
+# =============================================================================
+# home_menu.yaml — the main menu page (Page 1)
+# =============================================================================
+# A compact list of the stock firmware's brew modes, sized for a small round
+# display. Tapping a mode stores its name in `current_mode` and navigates to
+# the brew page.
+# =============================================================================
+# Layout: the page is a 360x360 square (matches the SDL window). The round
+# physical screen is shown via radius:255 + a bright border. Content is centered
+# using a flex COLUMN with explicit percentage widths on the buttons so they
+# span the usable area and center within the circle.
+# =============================================================================
+# Mode names mirror docs/PRIMUS_FIRMWARE_INTERNALS.md §7 (the stock state machine).
+# =============================================================================
+
+lvgl:
+  pages:
+    - id: home_page
+      width: 360
+      height: 360
+      bg_color: 0x000000
+      bg_opa: COVER
+      pad_left: 70
+      pad_right: 70
+      pad_top: 12
+      pad_bottom: 12
+      radius: 255              # circular background (100% radius)
+      border_color: 0x4FC3F7   # bright outline = the physical screen edge
+      border_width: 3
+      border_opa: COVER
+      layout:
+        type: FLEX
+        flex_flow: COLUMN
+        flex_align_main: CENTER
+        flex_align_cross: CENTER
+        pad_row: 3
+      widgets:
+        - label:
+            text: "openPrimus"
+            text_color: 0x4FC3F7
+            text_font: font_title
+            width: 220
+            height: 18
+        - label:
+            text: "Select brew mode"
+            text_color: 0x90A4AE
+            text_font: font_small
+            width: 220
+            height: 12
+
+        # --- brew modes: 220px wide (inside the circle), 38px tall for tapping ---
+        - button:
+            text: "Classic 9 Bar"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Classic 9 Bar"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "9 Bar + Pre-Infusion"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"9 Bar Pre-Infusion"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "Semi-Manual VPS"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Semi-Manual VPS"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "Manual VPS"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Manual VPS"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "Manual Flow"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Manual Flow"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "Profile Coffee"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Profile Coffee"'
+              - lvgl.page.show: brew_page
+
+        - button:
+            text: "Drip Coffee"
+            bg_color: 0x1E2A36
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 28
+            on_click:
+              - globals.set:
+                  id: current_mode
+                  value: '"Drip Coffee"'
+              - lvgl.page.show: brew_page

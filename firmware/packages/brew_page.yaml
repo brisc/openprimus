@@ -1,0 +1,199 @@
+# =============================================================================
+# brew_page.yaml — the brewing screen (Page 2)
+# =============================================================================
+# Shared by all brew modes. Shows the selected mode + live telemetry + a
+# Start/Stop toggle + a Back button to return to the menu.
+# =============================================================================
+
+lvgl:
+  pages:
+    - id: brew_page
+      width: 360
+      height: 360
+      bg_color: 0x000000
+      bg_opa: COVER
+      pad_left: 70
+      pad_right: 70
+      pad_top: 30
+      pad_bottom: 30
+      radius: 255          # circular background (100% radius)
+      border_color: 0x4FC3F7   # bright outline = the physical screen edge
+      border_width: 3
+      border_opa: COVER
+      layout:
+        type: FLEX
+        flex_flow: COLUMN
+        flex_align_main: CENTER
+        flex_align_cross: CENTER
+        pad_row: 3
+      widgets:
+        # Selected mode (title)
+        - label:
+            id: mode_label
+            text: ""
+            text_color: 0x4FC3F7
+            text_font: font_title
+            width: 220
+            height: 20
+
+        # Brew phase / status message
+        - label:
+            id: status_label
+            text: "Ready - press Start"
+            text_color: 0xB0BEC5
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # Target vs actual pressure
+        - label:
+            id: pressure_label
+            text: "0.0 / 9.0 bar"
+            text_color: 0xFFFFFF
+            text_font: font_body
+            width: 220
+            height: 18
+
+        # Brew timer
+        - label:
+            id: timer_label
+            text: "0.0s"
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 220
+            height: 18
+
+        # Temperature
+        - label:
+            id: temp_label
+            text: "93C"
+            text_color: 0x80CBC4
+            text_font: font_small
+            width: 220
+            height: 14
+
+        # Start / Stop toggle (text-only update — safe; never use bg_color in .update)
+        - button:
+            id: brew_btn
+            text: "Start"
+            bg_color: 0x2E7D32
+            text_color: 0xFFFFFF
+            text_font: font_body
+            width: 140
+            height: 40
+            on_click:
+              - globals.set:
+                  id: brew_active
+                  value: !lambda "return !id(brew_active);"
+              - if:
+                  condition:
+                    lambda: "return id(brew_active);"
+                  then:
+                    - lvgl.label.update:
+                        id: status_label
+                        text: "Heating up..."
+                    - lvgl.button.update:
+                        id: brew_btn
+                        text: "Stop"
+                    - logger.log: "Brew STARTED"
+                  else:
+                    - lvgl.label.update:
+                        id: status_label
+                        text: "Stopped"
+                    - lvgl.button.update:
+                        id: brew_btn
+                        text: "Start"
+                    - logger.log: "Brew STOPPED"
+
+        - button:
+            text: "Back"
+            bg_color: 0x37474F
+            text_color: 0xECEFF1
+            text_font: font_body
+            width: 120
+            height: 36
+            on_click:
+              - globals.set:
+                  id: brew_active
+                  value: "false"
+              - lvgl.label.update:
+                  id: status_label
+                  text: "Ready - press Start"
+              - lvgl.page.show: home_page
+
+# ---------------------------------------------------------------------------
+# Live updates — guarded: NaN-check every value, return float for arc value.
+# ---------------------------------------------------------------------------
+globals:
+  - id: brew_start_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+interval:
+  - interval: 500ms
+    then:
+      # Compute elapsed/phase only while brewing (plain C++ — always safe).
+      - if:
+          condition:
+            lambda: "return id(brew_active);"
+          then:
+            - if:
+                condition:
+                  lambda: "return id(brew_start_ms) == 0;"
+                then:
+                  - globals.set:
+                      id: brew_start_ms
+                      value: !lambda "return millis();"
+            - lambda: |-
+                uint32_t now = millis();
+                uint32_t start = id(brew_start_ms);
+                float elapsed = (start != 0 && now >= start) ? (now - start) / 1000.0f : 0.0f;
+                float p = id(sim_pressure).state;
+                if (p != p) p = 0.0f;  // NaN guard
+                float target = 9.0f;
+                const char *phase;
+                if (elapsed < 1.0f)         phase = "Pre-infusion...";
+                else if (p < target - 0.5f) phase = "Ramping up...";
+                else if (p < target + 0.5f) phase = "Extracting at 9 bar";
+                else                        phase = "Extracting";
+                id(_phase_str) = phase;
+                id(_elapsed_val) = elapsed;
+                id(_press_val) = p;
+          else:
+            - globals.set:
+                id: brew_start_ms
+                value: "0"
+      # Only touch LVGL widgets when the brew page is the active screen —
+      # updating widgets on a non-loaded page can segfault.
+      - if:
+          condition:
+            lvgl.page.is_showing: brew_page
+          then:
+            - lvgl.label.update:
+                id: mode_label
+                text: !lambda "return id(current_mode).c_str();"
+            - lvgl.label.update:
+                id: status_label
+                text: !lambda |-
+                  if (id(brew_active)) {
+                    return id(_phase_str).c_str();
+                  }
+                  return (const char *) "Ready - press Start";
+            - lvgl.label.update:
+                id: pressure_label
+                text: !lambda |-
+                  float p = id(_press_val);
+                  if (p != p) p = 0.0f;
+                  static char buf[24];
+                  snprintf(buf, sizeof(buf), "%.1f / 9.0 bar", p);
+                  return buf;
+            - lvgl.label.update:
+                id: timer_label
+                text: !lambda |-
+                  float e = id(_elapsed_val);
+                  if (e != e) e = 0.0f;
+                  static char buf[16];
+                  snprintf(buf, sizeof(buf), "%.1fs", e);
+                  return buf;
+

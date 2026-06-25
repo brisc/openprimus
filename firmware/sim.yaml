@@ -1,15 +1,12 @@
 # =============================================================================
 # openprimus — SIMULATOR config (runs on your PC, no ESP32 needed)
 # =============================================================================
-# Renders the LVGL UI in an SDL2 window on your computer.
+# This is a thin entry point. The actual logic lives in modular packages:
+#   packages/common.yaml     — fonts, shared state, simulated sensors
+#   packages/home_menu.yaml  — Page 1: the brew-mode menu
+#   packages/brew_page.yaml  — Page 2: the brewing screen + live updates
 #
-# Run:
-#   esphome run firmware/sim.yaml
-#
-# Requirements:
-#   Linux:   sudo apt install libsdl2-dev
-#   macOS:   brew install sdl2
-#   Windows: use WSL2 + apt install libsdl2-dev
+# Run:  ./scripts/run_sim.sh   (or: esphome run firmware/sim.yaml)
 # =============================================================================
 
 esphome:
@@ -17,9 +14,8 @@ esphome:
   friendly_name: "openPrimus (simulator)"
 
 host: {}
-
 logger:
-  level: DEBUG
+  level: INFO
 
 # ---------------------------------------------------------------------------
 # SIMULATED display — SDL2 window on the host
@@ -28,176 +24,26 @@ display:
   - platform: sdl
     id: primus_display
     dimensions:
-      width: 412       # placeholder round-panel diameter; confirm on HW
-      height: 412
+      width: 360       # WPM Primus circular group-head display (best-known round-panel res)
+      height: 360      # confirm exact panel on hardware probe
     window_options:
       position:
         centered_on_display: 1
       resizable: true
 
 # ---------------------------------------------------------------------------
-# Fonts
+# LVGL top-level (pages come from the packages)
 # ---------------------------------------------------------------------------
-font:
-  - file: "gfonts://Roboto@700"
-    id: font_title
-    size: 32
-    bpp: 4
-  - file: "gfonts://Roboto"
-    id: font_body
-    size: 22
-    bpp: 4
-  - file: "gfonts://Roboto"
-    id: font_small
-    size: 16
-    bpp: 4
-
-# ---------------------------------------------------------------------------
-# Simulated sensors (animated so the UI feels alive)
-# ---------------------------------------------------------------------------
-globals:
-  - id: brew_active
-    type: bool
-    restore_value: no
-    initial_value: "false"
-  - id: sim_pressure_val
-    type: float
-    restore_value: no
-    initial_value: "0.0"
-
-sensor:
-  - platform: template
-    id: sim_pressure
-    name: "Pressure"
-    unit_of_measurement: "bar"
-    update_interval: 200ms
-    lambda: |-
-      if (id(brew_active)) {
-        // ramp pressure toward 9 bar with a little noise
-        float target = 9.0;
-        id(sim_pressure_val) += (target - id(sim_pressure_val)) * 0.15;
-        id(sim_pressure_val) += (float)(rand() % 100 - 50) / 200.0;
-      } else {
-        id(sim_pressure_val) *= 0.8;   // decay to 0
-      }
-      if (id(sim_pressure_val) < 0) id(sim_pressure_val) = 0;
-      return id(sim_pressure_val);
-  - platform: template
-    id: sim_temperature
-    name: "Temperature"
-    unit_of_measurement: "°C"
-    update_interval: 1s
-    lambda: "return 93.0;"
-
-# ---------------------------------------------------------------------------
-# LVGL UI
-# ---------------------------------------------------------------------------
-# Round-display layout: a brew progress arc ring + live readouts + buttons.
 lvgl:
   displays: [primus_display]
+  touchscreens: [sim_touch]
   color_depth: 16
   default_font: font_body
-  pages:
-    - id: main_page
-      bg_color: 0x101418
-      bg_opa: COVER
-      layout:
-        type: FLEX
-        flex_flow: COLUMN
-        flex_align_main: CENTER
-        flex_align_cross: CENTER
-        pad_column: 6
-        pad_row: 6
-      widgets:
-        # Title
-        - label:
-            text: "openPrimus"
-            text_color: 0x4FC3F7
-            text_font: font_title
 
-        # Pressure readout (updated by automation below)
-        - label:
-            id: pressure_label
-            text: "0.0 bar"
-            text_color: 0xFFFFFF
-            text_font: font_body
-
-        # Temperature readout
-        - label:
-            id: temp_label
-            text: "93°C"
-            text_color: 0xB0BEC5
-            text_font: font_small
-
-        # Brew progress ring — value 0..100, fills clockwise
-        - arc:
-            id: brew_ring
-            width: 180
-            height: 180
-            value: 0
-            min_value: 0
-            max_value: 100
-            mode: NORMAL
-            start_angle: 0
-            end_angle: 360
-
-        # Status text
-        - label:
-            id: status_label
-            text: "Ready"
-            text_color: 0xB0BEC5
-            text_font: font_small
-
-        # Brew / stop button
-        - button:
-            id: brew_btn
-            bg_color: 0x2E7D32
-            text_color: 0xFFFFFF
-            widgets:
-              - label:
-                  id: brew_btn_label
-                  text: "▶  Brew"
-            on_click:
-              # Toggle the brew_active global; the interval below reacts to it.
-              - globals.set:
-                  id: brew_active
-                  value: !lambda "return !id(brew_active);"
-              - if:
-                  condition:
-                    lambda: "return id(brew_active);"
-                  then:
-                    - lvgl.label.update:
-                        id: status_label
-                        text: "Brewing..."
-                    - lvgl.label.update:
-                        id: brew_btn_label
-                        text: "Stop"
-                    - logger.log: "Brew STARTED"
-                  else:
-                    - lvgl.label.update:
-                        id: status_label
-                        text: "Ready"
-                    - lvgl.label.update:
-                        id: brew_btn_label
-                        text: "Brew"
-                    - logger.log: "Brew STOPPED"
-
-# Update the pressure readout + arc 5x/sec from the simulated sensor.
-# C++ lambda only touches plain globals/sensors (no LVGL types), and we drive
-# the LVGL widgets via ESPHome's own widget API through a small include.
-interval:
-  - interval: 200ms
-    then:
-      - lvgl.label.update:
-          id: pressure_label
-          text: !lambda |-
-            static char buf[16];
-            snprintf(buf, sizeof(buf), "%.1f bar", id(sim_pressure).state);
-            return buf;
-      - lvgl.arc.update:
-          id: brew_ring
-          value: !lambda |-
-            int val = (int)(id(sim_pressure).state / 12.0 * 100.0);
-            if (val < 0) val = 0;
-            if (val > 100) val = 100;
-            return val;
+# ---------------------------------------------------------------------------
+# Pull in the modular packages
+# ---------------------------------------------------------------------------
+packages:
+  common:    !include packages/common.yaml
+  home_menu: !include packages/home_menu.yaml
+  brew_page: !include packages/brew_page.yaml

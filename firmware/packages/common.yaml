@@ -1,0 +1,96 @@
+# =============================================================================
+# common.yaml — shared state, sensors, fonts (the "services" layer)
+# =============================================================================
+# Included by both sim.yaml and primus.yaml. Holds everything that isn't a UI
+# page: global state, the simulated sensors, and font definitions.
+# =============================================================================
+# Design note: the brew simulation state lives here as globals so any page can
+# read/toggle it without coupling. Real hardware will swap the `sensor:` blocks
+# for real ADC reads, but the globals + the math stay the same.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Fonts — compact sizes for a small round display
+# ---------------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto@700"
+    id: font_title
+    size: 18
+    bpp: 4
+  - file: "gfonts://Roboto"
+    id: font_body
+    size: 14
+    bpp: 4
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 11
+    bpp: 4
+
+# ---------------------------------------------------------------------------
+# Touchscreen (simulator) — wires the SDL2 mouse into LVGL as a pointer input.
+# Without this, clicks in the simulator window do nothing (LVGL never sees them).
+# On real hardware this is replaced by the gt911 component (see primus.yaml).
+# ---------------------------------------------------------------------------
+touchscreen:
+  - platform: sdl
+    id: sim_touch
+    sdl_id: primus_display
+
+# ---------------------------------------------------------------------------
+# Shared state
+# ---------------------------------------------------------------------------
+globals:
+  - id: brew_active
+    type: bool
+    restore_value: no
+    initial_value: "false"
+  - id: brew_pressure_val
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: current_mode
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  # Scratch globals for the brew-page interval (so lambdas only do plain-C++
+  # math, and the widget updates read safe pre-computed values).
+  - id: _phase_str
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: _elapsed_val
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: _press_val
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+# ---------------------------------------------------------------------------
+# Simulated sensors — animated telemetry.
+# On real hardware these become real `adc` sensors with calibration filters;
+# the globals + math here are a stand-in until then.
+# ---------------------------------------------------------------------------
+sensor:
+  - platform: template
+    id: sim_pressure
+    name: "Pressure"
+    unit_of_measurement: "bar"
+    update_interval: 500ms
+    lambda: |-
+      if (id(brew_active)) {
+        float target = 9.0;
+        id(brew_pressure_val) += (target - id(brew_pressure_val)) * 0.15;
+        id(brew_pressure_val) += (float)(rand() % 100 - 50) / 250.0;
+      } else {
+        id(brew_pressure_val) *= 0.8;
+      }
+      if (id(brew_pressure_val) < 0) id(brew_pressure_val) = 0;
+      return id(brew_pressure_val);
+  - platform: template
+    id: sim_temperature
+    name: "Temperature"
+    unit_of_measurement: "°C"
+    update_interval: 1s
+    lambda: "return 93.0;"
