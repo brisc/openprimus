@@ -125,13 +125,11 @@ PC with no ESP32 hardware. This is the fastest way to contribute UI work before
 the display pinout is confirmed on real hardware:
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r firmware/requirements.txt
-cp firmware/secrets.yaml.example firmware/secrets.yaml   # edit WiFi creds
-esphome run firmware/sim.yaml        # → a window opens with the UI
+sudo apt install libsdl2-dev        # one-time (Linux). macOS: brew install sdl2
+./scripts/run_sim.sh                # → a window opens with the UI
 ```
 
-(Linux: `sudo apt install libsdl2-dev` · macOS: `brew install sdl2` · Windows: use WSL2)
+`run_sim.sh` handles the venv, ESPHome install, and launch in one go.
 
 **Key decisions** (full rationale in
 [`docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md`](docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md)):

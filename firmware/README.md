@@ -14,30 +14,30 @@ You can design and click-test the entire LVGL UI on your PC before any ESP32
 exists. This is the fastest way to iterate and the easiest way to contribute
 without owning a Primus.
 
-### 1. Install ESPHome (one-time)
+### One command (recommended)
 
 ```bash
-# from the repo root
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r firmware/requirements.txt
+./scripts/run_sim.sh
 ```
 
-SDL2 is required for the simulator window:
+This single script does everything: checks SDL2, creates the Python venv,
+installs ESPHome (if needed), creates `secrets.yaml`, and launches the simulator.
+First run takes ~2 min (setup + compile); later runs are fast (~10s).
+
+**One prerequisite** — SDL2 (for the window):
 - **Linux:** `sudo apt install libsdl2-dev`
 - **macOS:** `brew install sdl2`
 - **Windows:** use WSL2, then `sudo apt install libsdl2-dev` inside it
 
-### 2. Configure secrets (one-time)
+A window opens showing the Primus UI. Click **Brew** to simulate an extraction
+(watch the pressure ramp). Ctrl-C in the terminal to stop.
+
+### Manual steps (if you prefer)
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r firmware/requirements.txt
 cp firmware/secrets.yaml.example firmware/secrets.yaml
-# edit firmware/secrets.yaml with your WiFi details (used even in sim)
-```
-
-### 3. Run the simulator
-
-```bash
 esphome run firmware/sim.yaml
 ```
 
