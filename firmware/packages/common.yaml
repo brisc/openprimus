@@ -17,14 +17,51 @@ font:
     id: font_title
     size: 18
     bpp: 4
+  # Body font WITH icons merged in via `extras` — so a single button label can
+  # render both Latin text and icon glyphs (e.g. "\uE56B Classic 9 Bar").
   - file: "gfonts://Roboto"
     id: font_body
     size: 14
     bpp: 4
+    extras:
+      - file: "fonts/material-symbols-rounded.ttf"
+        glyphs:
+          - "\U0000E56B"   # coffee
+          - "\U0000E541"   # local_cafe
+          - "\U0000E63E"   # wifi
+          - "\U0000E63F"   # wifi_off
+          - "\U0000E037"   # play_arrow
+          - "\U0000E047"   # stop
+          - "\U0000E5C4"   # arrow_back
+          - "\U0000F076"   # thermostat
+          - "\U0000E798"   # water_drop
+          - "\U0000E9E4"   # speed
+          - "\U0000E425"   # timer
+          - "\U0000EA4A"   # science
+          - "\U0000E8B8"   # tune
   - file: "gfonts://Roboto"
     id: font_small
     size: 11
     bpp: 4
+  # Icon-only font (for the topbar WiFi indicator and standalone icon labels).
+  - file: "fonts/material-symbols-rounded.ttf"
+    id: font_icons
+    size: 18
+    bpp: 4
+    glyphs:
+      - "\U0000E56B"   # coffee
+      - "\U0000E541"   # local_cafe
+      - "\U0000E63E"   # wifi
+      - "\U0000E63F"   # wifi_off
+      - "\U0000E037"   # play_arrow
+      - "\U0000E047"   # stop
+      - "\U0000E5C4"   # arrow_back
+      - "\U0000F076"   # thermostat
+      - "\U0000E798"   # water_drop
+      - "\U0000E9E4"   # speed
+      - "\U0000E425"   # timer
+      - "\U0000EA4A"   # science
+      - "\U0000E8B8"   # tune
 
 # ---------------------------------------------------------------------------
 # Touchscreen (simulator) — wires the SDL2 mouse into LVGL as a pointer input.
@@ -66,6 +103,17 @@ globals:
     type: float
     restore_value: no
     initial_value: "0.0"
+
+# ---------------------------------------------------------------------------
+# WiFi connection state (drives the topbar icon).
+# In the simulator this is a toggled global (no real radio). On real hardware,
+# bind it to the actual wifi component via on_connect/on_disconnect triggers
+# (see primus.yaml) — the topbar reads only this global, so it works in both.
+# ---------------------------------------------------------------------------
+  - id: wifi_connected
+    type: bool
+    restore_value: no
+    initial_value: "false"
 
 # ---------------------------------------------------------------------------
 # Simulated sensors — animated telemetry.

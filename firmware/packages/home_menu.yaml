@@ -35,6 +35,8 @@ lvgl:
         flex_align_cross: CENTER
         pad_row: 3
       widgets:
+        # (WiFi icon lives in top_layer — see packages/topbar.yaml — so it
+        # shows on every page without being declared here.)
         - label:
             text: "openPrimus"
             text_color: 0x4FC3F7
@@ -48,9 +50,9 @@ lvgl:
             width: 220
             height: 12
 
-        # --- brew modes: 220px wide (inside the circle), 38px tall for tapping ---
+        # --- brew modes: 220px wide (inside the circle), icon + label ---
         - button:
-            text: "Classic 9 Bar"
+            text: "\U0000E56B Classic 9 Bar"          # coffee icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -63,7 +65,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "9 Bar + Pre-Infusion"
+            text: "\U0000E541 9 Bar + Pre-Infusion"   # local_cafe icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -76,7 +78,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "Semi-Manual VPS"
+            text: "\U0000E9E4 Semi-Manual VPS"        # speed icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -89,7 +91,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "Manual VPS"
+            text: "\U0000E8B8 Manual VPS"             # tune icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -102,7 +104,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "Manual Flow"
+            text: "\U0000E798 Manual Flow"            # water_drop icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -115,7 +117,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "Profile Coffee"
+            text: "\U0000E425 Profile Coffee"         # timer icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body
@@ -128,7 +130,7 @@ lvgl:
               - lvgl.page.show: brew_page
 
         - button:
-            text: "Drip Coffee"
+            text: "\U0000EA4A Drip Coffee"            # science icon
             bg_color: 0x1E2A36
             text_color: 0xECEFF1
             text_font: font_body

@@ -53,6 +53,9 @@ env/
 venv/
 firmware/.esphome/          # ESPHome build/cache dir
 firmware/secrets.yaml       # real WiFi creds — never commit
+# Icon font source — 15MB, ESPHome subsets it at compile time.
+# Fetched by scripts/fetch_fonts.sh (called from run_sim.sh). Keep .gitkeep only.
+firmware/fonts/*.ttf
 /esphome_build/
 
 # ---------------------------------------------------------------------------

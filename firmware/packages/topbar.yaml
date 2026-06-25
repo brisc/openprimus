@@ -1,0 +1,57 @@
+# =============================================================================
+# topbar.yaml — reusable status bar (WiFi icon via top_layer)
+# =============================================================================
+# Uses LVGL's `top_layer` so the WiFi icon renders on ALL pages automatically —
+# no per-page duplication. Pattern from the ESPHome LVGL cookbook:
+# https://esphome.io/cookbook/lvgl/#mdi-icons-in-text
+#
+# The icon glyph comes from Material Symbols (font_icons). Updated from the
+# shared `wifi_connected` global. On real hardware, bind that global to wifi:
+#   wifi:
+#     on_connect:    then: [globals.set: {id: wifi_connected, value: 'true'}]
+#     on_disconnect: then: [globals.set: {id: wifi_connected, value: 'false'}]
+# =============================================================================
+
+lvgl:
+  # top_layer widgets show on every page, above the page content.
+  top_layer:
+    widgets:
+      - label:
+          id: wifi_icon
+          text: "\U0000E63F"           # wifi_off glyph (red until connected)
+          text_color: 0xC62828
+          text_font: font_icons
+          # Top-center: horizontally centered (x from 168, width 24 → center ~180),
+          # near the top of the circle where the disc is wide enough.
+          x: 168
+          y: 8
+          width: 24
+          height: 22
+
+# ---------------------------------------------------------------------------
+# In the simulator, fake a WiFi connection ~5s after boot so the icon flips.
+# On real hardware this is driven by the wifi component instead.
+# ---------------------------------------------------------------------------
+interval:
+  - interval: 5s
+    then:
+      - globals.set:
+          id: wifi_connected
+          value: "true"
+  # Refresh the icon glyph + color. Uses YAML literal strings (which process
+  # \U escapes) under if/then, NOT lambdas — avoids C++ escape pitfalls.
+  - interval: 2s
+    then:
+      - if:
+          condition:
+            lambda: "return id(wifi_connected);"
+          then:
+            - lvgl.label.update:
+                id: wifi_icon
+                text: "\U0000E63E"     # wifi glyph
+                text_color: 0x4CAF50   # green
+          else:
+            - lvgl.label.update:
+                id: wifi_icon
+                text: "\U0000E63F"     # wifi_off glyph
+                text_color: 0xC62828   # red

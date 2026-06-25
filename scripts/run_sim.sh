@@ -28,6 +28,9 @@ if ! command -v sdl2-config >/dev/null 2>&1; then
   exit 1
 fi
 
+# --- 1b. Icon font (15MB, fetched not committed) ---
+"$(dirname "$0")/fetch_fonts.sh"
+
 # --- 2. venv + ESPHome ---
 VENV="$ROOT/.venv"
 if [ ! -d "$VENV" ]; then

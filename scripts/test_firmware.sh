@@ -31,6 +31,9 @@ bad()  { echo "  ✗ $1" >&2; FAIL=$((FAIL+1)); }
 echo "=== Test: $CONFIG ==="
 echo ""
 
+# --- 0. Icon font (needed for compile) ---
+"$(dirname "$0")/fetch_fonts.sh" >/dev/null
+
 # --- 1. Config validation (YAML schema + ESPHome component checks) ---
 echo "[1/3] Validating config (esphome config)..."
 if esphome config "$CONFIG" >/tmp/primus_config.log 2>&1; then
@@ -53,7 +56,7 @@ fi
 
 # --- 3. Structural checks on the modular packages ---
 echo "[3/3] Checking package structure..."
-EXPECTED_PKGS=(common home_menu brew_page)
+EXPECTED_PKGS=(common topbar home_menu brew_page)
 for pkg in "${EXPECTED_PKGS[@]}"; do
   if [ -f "firmware/packages/${pkg}.yaml" ]; then
     ok "package ${pkg}.yaml present"

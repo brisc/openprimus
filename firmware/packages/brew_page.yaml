@@ -27,6 +27,7 @@ lvgl:
         flex_align_cross: CENTER
         pad_row: 3
       widgets:
+        # (WiFi icon lives in top_layer — see packages/topbar.yaml.)
         # Selected mode (title)
         - label:
             id: mode_label
@@ -75,7 +76,7 @@ lvgl:
         # Start / Stop toggle (text-only update — safe; never use bg_color in .update)
         - button:
             id: brew_btn
-            text: "Start"
+            text: "\U0000E037 Start"   # play_arrow icon
             bg_color: 0x2E7D32
             text_color: 0xFFFFFF
             text_font: font_body
@@ -94,7 +95,7 @@ lvgl:
                         text: "Heating up..."
                     - lvgl.button.update:
                         id: brew_btn
-                        text: "Stop"
+                        text: "\U0000E047 Stop"
                     - logger.log: "Brew STARTED"
                   else:
                     - lvgl.label.update:
@@ -102,7 +103,7 @@ lvgl:
                         text: "Stopped"
                     - lvgl.button.update:
                         id: brew_btn
-                        text: "Start"
+                        text: "\U0000E037 Start"
                     - logger.log: "Brew STOPPED"
 
         - button:
