@@ -145,9 +145,14 @@ Layout (`firmware/`):
 firmware/
 ├── sim.yaml                       ← SDL2 simulator — runs the UI on your PC today
 ├── primus.yaml                    ← real-hardware config (display pins = ⚠️ TODO)
-├── components/
-│   └── primus_brew/               ← custom component: the real-time brew controller
-│       └── __init__.py             YAML schema + config validation (C++ stub next)
+├── packages/                      ← modular YAML packages (one concern each)
+│   ├── common.yaml                  fonts, globals, simulated sensors, touchscreen
+│   ├── config.yaml                  6 HA-controllable number entities (temp, pressure, …)
+│   ├── topbar.yaml                  WiFi status icon (shows on every page)
+│   ├── home_menu.yaml               Page 1: brew-mode menu + Settings
+│   ├── brew_page.yaml               Page 2: live telemetry + pressure gauge
+│   ├── chart.yaml                   pressure history + gauge driver
+│   └── settings_page.yaml           Page 3: on-device config sliders
 ├── requirements.txt                pins esphome==2026.6.2
 └── secrets.yaml.example            WiFi credential template
 ```
@@ -157,17 +162,22 @@ See [`firmware/README.md`](firmware/README.md) for the full setup and status.
 
 ## 📈 Status & roadmap
 
-**Done:** full platform/architecture documentation, OTA protocol, NVS schema,
-calibration math, boiler algorithm, brew state-machine structure, hardware pin
-map (partial), Ghidra decompilation pipeline, the ESPHome open-firmware
-architecture, and a **runnable UI simulator** (`firmware/sim.yaml`).
+**Done:**
+- ✅ Full platform/architecture documentation, OTA protocol, NVS schema,
+  calibration math, boiler algorithm, brew state-machine structure
+- ✅ Hardware pin map (partial) + Ghidra decompilation pipeline
+- ✅ ESPHome open-firmware architecture + runnable UI simulator
+- ✅ 6 HA-controllable config entities (temp, pressure, pre-infusion, shot targets)
+- ✅ Config-driven simulated sensors (pressure, temperature, flow rate, shot weight)
+- ✅ 3 UI pages: home menu, brew screen (live telemetry + pressure gauge), settings (sliders)
+- ✅ Material Symbols icons + WiFi status topbar
 
 **Next:**
 - [ ] Recover the RGB-panel data pin map (HW probe — logic analyzer / silkscreen)
 - [ ] Decompile the StateControl inner control loop → extract PID coefficients
 - [ ] Confirm remaining sensor/actuator roles on real hardware (pressure vs paddle ADC, flow meter, GPIO4/19 pump-vs-solenoid)
-- [ ] Rebuild the 22 LVGL screens (contributor-friendly via the simulator — no hardware needed)
-- [ ] Implement the `primus_brew` C++ real-time control loop (pressure PID + VPS profiling)
+- [ ] Implement the `primus_brew` C++ real-time control loop (pressure PID + VPS profiling) — unlocks the live pressure line-chart
+- [ ] Rebuild the remaining LVGL screens (19 of 22) — contributor-friendly via the simulator
 
 Contributions welcome — see
 [`docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md §7`](docs/OPEN_SOURCE_ESPHOME_ARCHITECTURE.md)

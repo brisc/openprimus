@@ -1,297 +1,251 @@
 # Open-Source Firmware — ESPHome Architecture
 
-> How to build **`primus-os`**, an open-source replacement firmware for the WPM
-> Primus (KD360X) espresso machine, on **ESPHome 2026.6**.
+> How **`openPrimus`** (the open-source replacement firmware for the WPM Primus /
+> KD360X espresso machine) is built on **ESPHome 2026.6**.
 
-This document captures the target architecture, the recovered hardware facts it
-rests on, and the ESPHome-specific component choices. It is written so a
-contributor can start implementing without re-deriving the pinout or re-reading
-the reverse-engineering notes.
+This is the living architecture document. It reflects the firmware as it
+**currently exists** under `firmware/` (implemented sections marked ✅), the
+hardware facts it rests on (from the reverse-engineering), and the open work
+(marked ⚠️/🚧).
 
-> **Source of truth for the RE facts:** `docs/PRIMUS_RE_RECOVERED.md` and the
-> Ghidra decompilation under `ghidra_out/`. Everything marked ✅ below is taken
-> directly from the decompiled stock firmware; ⚠️ means it needs a hardware probe.
+> **Cross-refs:** RE findings → `docs/PRIMUS_RE_RECOVERED.md`. Getting started →
+> `firmware/README.md`. Reproducing the analysis → `README.md` (repo root).
 
 ---
 
-## 1. Platform decision: ESPHome 2026.6 + a custom C++ component
+## 1. Platform decision: ESPHome 2026.6 (esp-idf) + one custom C++ component
 
-We will **not** clone the stock firmware's raw Arduino/IDF approach. Instead:
+We deliberately do **not** clone the stock firmware's raw Arduino/IDF approach.
 
-| Layer | Technology | Why |
+| Layer | Technology | Status |
 |---|---|---|
-| **Platform / build** | ESPHome 2026.6, `framework: esp-idf` | Parallel RGB + PSRAM *require* ESP-IDF (not Arduino). ESPHome 2026.6 ships IDF 5.3.2 — newer than the stock 4.4.6. |
-| **Declarative config** | `esphome/primus.yaml` | Display, touch, ADC, LEDC, WiFi, OTA, web UI, LVGL — all configured declaratively. |
-| **UI** | ESPHome `lvgl` component | Native LVGL binding; rebuild the 22 screens declaratively + small C++ helpers. |
-| **Real-time brew control** | Custom C++ component `primus_brew` (FreeRTOS task) | The pressure/flow profiling loop needs tighter than ESPHome's ~7–16 ms main loop. |
-| **Calibration / state** | `preferences` + the recovered NVS schema | Binary-compatible with stock calibration values. |
+| **Platform / build** | ESPHome 2026.6.2, `framework: esp-idf` | ✅ |
+| **Declarative config** | `firmware/sim.yaml` (sim) / `firmware/primus.yaml` (HW) | ✅ |
+| **UI** | ESPHome `lvgl` component, modular `packages/` | ✅ (3 pages built) |
+| **Config / telemetry** | Template `number:` + `sensor:` entities | ✅ |
+| **Real-time brew control** | Custom C++ component `primus_brew` (FreeRTOS task) | 🚧 deferred |
+| **Calibration / state** | `number` entities (`restore_value`) mirroring stock NVS | ✅ (sim) |
 
-**Why this split:** ESPHome gives us, for free, the ~90 % of the firmware that is
-plumbing (display, touch, WiFi, OTA, sensor drivers). The only piece that needs
-hand-written real-time C++ is the brew control loop — exactly where ESPHome's
-main-loop timing is too loose. This is the documented ESPHome escape hatch
-([Component Architecture](https://developers.esphome.io/architecture/components/)).
+**Why ESPHome:** it gives us, for free, the ~90% of the firmware that is plumbing
+(display, touch, WiFi, OTA, sensor drivers, HA entity exposure). The only piece
+that needs hand-written real-time C++ is the brew control loop — exactly where
+ESPHome's ~7–16 ms main loop is too loose.
+
+**Why `esp-idf` framework (not Arduino):** parallel RGB + PSRAM *require* it.
+ESPHome 2026.6 ships IDF 5.3.2 — newer than the stock 4.4.6.
 
 ---
 
-## 2. Hardware map (recovered from stock firmware decompilation)
+## 2. Current firmware structure (what's implemented)
 
-### Display — ✅ driver known, ⚠️ data pins need probe
-- **Type:** native ESP32-S3 RGB LCD panel, 16-bit parallel RGB.
-- **Stock driver:** `Arduino_ESP32RGBPanel` → `esp_lcd_new_rgb_panel()` (confirmed via decompilation).
-- **ESPHome driver:** **`mipi_rgb`** (the `rpi_dpi_rgb` driver is deprecated as of 2026.6 — see `docs/` notes).
-- **Framebuffer:** PSRAM-backed (stock logs `"PSRAM: %iMB"`).
-- ⚠️ **The ~20 RGB data/timing pins** (R0–R4, G0–G5, B0–B4, HSYNC, VSYNC, PCLK, DE) live in the GFX driver constructor, which the decompiler could not surface cleanly. **Action: probe with a logic analyzer / read the PCB silkscreen.** Until then, the YAML `data_pins:` block below is a placeholder.
+```
+firmware/
+├── sim.yaml                       ✅ simulator entry point (SDL2 host display)
+├── primus.yaml                    ✅ real-hardware config (display pins = ⚠️ TODO)
+├── packages/                      ← modular, one concern per file
+│   ├── common.yaml                ✅ fonts, globals, simulated sensors, touchscreen
+│   ├── config.yaml                ✅ 6 HA-controllable number entities
+│   ├── topbar.yaml                ✅ WiFi status icon (LVGL top_layer)
+│   ├── home_menu.yaml             ✅ Page 1: brew-mode menu + Settings entry
+│   ├── brew_page.yaml             ✅ Page 2: brewing screen with live telemetry
+│   ├── chart.yaml                 ✅ pressure gauge (arc) + history buffer
+│   └── settings_page.yaml         ✅ Page 3: on-device config sliders
+├── fonts/                         icon font (fetched, not committed)
+└── README.md                      setup + simulator quick-start
+```
+
+**Simulator runs today** — `./scripts/run_sim.sh` opens an SDL2 window with the
+full UI. No ESP32 needed. The LVGL UI definition is shared between sim and HW;
+only the `display:` driver block differs (`sdl` vs `mipi_rgb`).
+
+---
+
+## 3. The config layer (`config.yaml`) — Home Assistant integration
+
+All brew parameters are template `number:` entities: **persisted across reboots**
+(`restore_value: true`), **controllable from HA** (appear as sliders in the HA
+UI), and editable **on-device** via the settings page (bidirectional).
+
+| Entity id | What | Range | Default |
+|---|---|---|---|
+| `target_temp` | Boiler target temperature | 80–100 °C | 93.0 |
+| `target_pressure` | Extraction target pressure | 1–12 bar | 9.0 |
+| `preinfusion_pressure` | Pre-infusion pressure | 0–4 bar | 2.0 |
+| `preinfusion_time` | Pre-infusion duration | 0–10 s | 3.0 |
+| `shot_target_volume` | Volumetric shot target | 10–60 ml | 36 |
+| `shot_target_time` | Timed shot target | 10–60 s | 28 |
+
+In HA these enable automations like "preheat to 95°C at 7am" or "set pressure
+profile for a light roast." They mirror the stock firmware's NVS `Settings`
+namespace.
+
+---
+
+## 4. The sensor layer (`common.yaml`)
+
+Simulated sensors with realistic espresso physics, all **driven by the config
+entities** (so changing a setting changes the sim behavior):
+
+| Sensor | Unit | Behavior |
+|---|---|---|
+| `sim_pressure` | bar | Ramps through pre-infusion (`preinfusion_pressure` for `preinfusion_time`) then to `target_pressure`. Exponential approach + jitter. |
+| `sim_temperature` | °C | Drifts toward `target_temp`. |
+| `sim_flow_rate` | ml/s | Derived from pressure (~1.2 ml/s/bar) + noise. |
+| `sim_shot_weight` | g | Cumulative integration of flow during a brew. |
+
+> On real hardware, swap these `template` sensors for real `adc` platforms with
+> the recovered `calibrate_linear` filters (§6). The config entities + the math
+> stay identical.
+
+---
+
+## 5. The UI (`packages/`) — LVGL
+
+Three pages plus a global topbar, built declaratively:
+
+| Page | Widgets |
+|---|---|
+| `home_page` | Title, 7 brew-mode buttons (each with an icon + label), Settings button |
+| `brew_page` | Mode title, phase status, pressure/time/temp/flow readouts, pressure-gauge arc, Start/Stop, Back |
+| `settings_page` | Sliders for temp, pressure, pre-infusion pressure, shot volume (each writes back to its `number` entity) |
+| `top_layer` | WiFi status icon (shows on every page) |
+
+**Icons** use Material Symbols, merged into the body font via the `extras:` key
+(following the [ESPHome LVGL cookbook](https://esphome.io/cookbook/lvgl/)). The
+15MB source font is fetched (not committed); ESPHome subsets it to the declared
+glyphs at compile time.
+
+**Round-display aware:** pages use `radius: 255` + a bright border to show the
+physical screen edge; content is sized to fit inside the circle (computed
+heights, 220px-wide widgets, symmetric padding).
+
+### ESPHome/LVGL patterns enforced (hard-won, documented here)
+
+- **Two-phase updates:** compute values in a plain-C++ lambda writing to scratch
+  globals, then update widgets via `lvgl.*.update` actions reading those globals.
+  Never read sensor state directly inside an `lvgl.*.update` lambda.
+- **Page-visibility guard:** always wrap live widget updates in
+  `lvgl.page.is_showing: <page>` — updating widgets on a non-loaded page segfaults.
+- **NaN guards** on every sensor-derived value (`if (p != p) p = 0.0f;`).
+- **Button text-only updates:** `lvgl.button.update` accepts only `text:`, NOT
+  `bg_color:` (the latter compiles but crashes at runtime).
+- **No `lv_obj_t` in lambdas:** ESPHome YAML lambdas see only a forward-declared
+  `lv_obj_t`, so they can't call `lv_canvas_*`/`lv_label_set_text` directly.
+  Drawing must use declarative `lvgl.*.update` actions or a C++ component that
+  includes `lvgl.h`.
+
+---
+
+## 6. Hardware map (recovered from stock firmware decompilation)
+
+### Display — ✅ driver / ⚠️ pins
+- **Type:** circular colour LED touchscreen on the group head; native ESP32-S3
+  parallel RGB panel (16-bit). **Best-known resolution: 360×360** (WPM doesn't
+  publish exact pixels; the simulator uses this as a placeholder).
+- **Stock driver:** `Arduino_ESP32RGBPanel` → `esp_lcd_new_rgb_panel()` (confirmed).
+- **ESPHome driver:** **`mipi_rgb`** (`rpi_dpi_rgb` is deprecated as of 2026.6).
+- **Framebuffer:** PSRAM-backed.
+- ⚠️ **The ~20 RGB data/timing pins** live in the GFX driver constructor, which
+  the decompiler couldn't surface cleanly. **Needs a hardware probe.**
 
 ### Touch — ✅ fully recovered
-```c
-// stock: Wire.begin(SDA = 6, SCL = 5)
-// stock: probe GT911 at I²C 0x5D, then 0x14
-```
-- **SDA = GPIO6, SCL = GPIO5** (I²C bus 0).
-- Controller: **GT911** (native ESPHome `gt911` component).
+- **GT911** capacitive, I²C **SDA=GPIO6, SCL=GPIO5**, dual-address probe 0x5D→0x14.
+- ESPHome `gt911` component.
 
-### Sensors & actuators — ✅ pin roles, ⚠️ exact assignments
-From `setup()` decompilation (`FUN_420654d4` = `pinMode`, `FUN_420652d0` = `analogRead`):
+### Sensors & actuators — ✅ roles / ⚠️ exact assignments
+From `setup()` decompilation:
 
-| GPIO | Direction | Stock role | ESPHome component |
+| GPIO | Direction | Stock role | ESPHome |
 |---|---|---|---|
-| 4 | OUTPUT | actuator (pump PWM / solenoid) | `ledc` or `output` |
-| 19 | OUTPUT | actuator (pump PWM / solenoid) | `ledc` or `output` |
-| 42 | INPUT_PULLUP | switch / sensor | `binary_sensor` (gpio) |
+| 4 | OUTPUT | actuator (pump PWM / solenoid) | `ledc` |
+| 19 | OUTPUT | actuator (pump PWM / solenoid) | `ledc` |
+| 42 | INPUT_PULLUP | switch / sensor | `binary_sensor` |
 | 20 | INPUT | analog/sensor | — |
-| 4 | ADC read | pressure baseline / paddle | `adc` (platform) |
-| 19 | ADC read | pressure baseline / paddle | `adc` (platform) |
+| 4, 19 | ADC read | pressure baseline / paddle | `adc` |
 
-⚠️ The **pressure-transducer vs paddle** assignment of GPIO4/GPIO19, plus the
-**flow-meter input** (likely a PCNT pin) and **NTC** channels, need one more
-targeted decompile of the sensor-read functions (or a multimeter probe). The
-calibration math is already known (§4).
+⚠️ **Needs probe:** pressure-vs-paddle assignment of GPIO4/19, flow-meter input
+(likely PCNT), NTC channels.
 
-### NeoPixel — ✅
-Addressable RGB status LED via `esp32-hal-rgb-led` / `neopixel` → ESPHome `light` (`neopixelbus` or `fastled`).
-
----
-
-## 3. Target repository layout
-
+### Calibration math (binary-compatible with stock NVS) — ✅
 ```
-primus-os/                          (separate repo, or primus/firmware/)
-├── esphome/
-│   └── primus.yaml                 ← declarative config (display, touch, sensors, WiFi, OTA, LVGL)
-├── components/
-│   └── primus_brew/                ← custom component: the real-time brew controller
-│       ├── __init__.py              YAML schema + config validation
-│       ├── brew_control.h           FreeRTOS task: pressure PID + VPS profile engine
-│       ├── brew_control.cpp
-│       ├── sensors.h                linear calibration (recovered slope/intercept)
-│       ├── sensors.cpp
-│       ├── boiler.h                 the recovered fill algorithm
-│       ├── boiler.cpp
-│       └── automation.h             state machine (modes)
-├── data/
-│   └── ui/                          LVGL screen definitions / fonts
-├── README.md
-└── platformio.ini or esphome build config
+Pressure(bar) = (ADC - MinPressureADC) * PressureSlope + PresIntercept
+              = (ADC - 540) * 0.008 + (-3.0246)         [defaults]
+Temperature(°C) = ADC * tempSlope + tempIntercept        [NTC, linear]
 ```
-
-ESPHome resolves `components/primus_brew` automatically when listed in `primus.yaml`
-under `external_components` or via the local `custom_components` mechanism.
-
----
-
-## 4. Calibration math (binary-compatible with stock NVS)
-
-Recovered defaults from `init()` (`FUN_42006c7c`) — store these in NVS with the
-**same keys** so a flashed `primus-os` reads the unit's factory calibration:
-
-```cpp
-// sensors.cpp — direct port of stock formulas
-float read_pressure_bar(uint16_t adc) {
-    // NVS 'Calibration': MinPressureADC=540, PressureSlope=0.008, PresIntercept=-3.0246
-    return (adc - min_pressure_adc) * pressure_slope + pressure_intercept;
-}
-float read_temp_c(uint16_t adc) {
-    // NTC: linear regression
-    return adc * temp_slope + temp_intercept;
-}
-```
-
-NVS namespaces to mirror (`Preferences`): `MachineInfo`, `Calibration`, `Settings`,
-`UserData` (`CoffeeProfile` blob = 7250 B, `HistoryProfile` = 1450 B, `Record` = 95 B/entry).
+NVS namespaces: `MachineInfo`, `Calibration`, `Settings`, `UserData`
+(`CoffeeProfile` = 7250 B, `HistoryProfile` = 1450 B, `Record` = 95 B/entry).
 Full schema in `docs/PRIMUS_RE_RECOVERED.md §C`.
 
 ---
 
-## 5. Brew control loop (the custom component)
+## 7. The brew control loop (custom C++ component) — 🚧 deferred
 
-The stock `StateControl` runs modes (`PrepareManualVPS`, `PrepareSemiManualVPS`,
-`Classic 9 Bar`, …) as a paddle-driven state machine with closed-loop pressure/
-flow control (`"Pressure: %.1f => %.1f"`, `"Target %.1f BAR"`).
+The stock `StateControl` runs a paddle-driven state machine with closed-loop
+pressure/flow profiling (modes: Classic 9 Bar, Semi-Manual VPS, Manual VPS, …).
 
-In `primus-os` this becomes a `Component` with its own FreeRTOS task:
+In openPrimus this becomes a `Component` with a FreeRTOS task:
 
 ```cpp
-// brew_control.h
-class PrimusBrew : public Component, public EntityBase {
-  void setup() override;        // spawn the RTOS task, load calibration from NVS
-  void loop() override;         // non-RT housekeeping (ESPHome main loop)
-  void start_shot(Mode mode, Profile *p);
-  void stop_shot();
- private:
-  static void rtos_task(void *); // the tight ~1 kHz pressure/flow loop
-  Mode mode_; Profile *profile_;
+class PrimusBrew : public Component {
+  void setup() override;             // spawn RTOS task, load calibration
+  static void rtos_task(void *);     // ~1 kHz: read ADC → PID → pump LEDC
 };
 ```
 
-- **Tight loop** (the `rtos_task`): read pressure ADC → PID → write pump LEDC duty →
-  read flow pulses → enforce profile target. Runs at ~1 kHz, independent of ESPHome's main loop.
-- **Mode dispatch** mirrors the stock state machine (§G of the RE doc).
-- **Boiler fill** is a separate sub-component (`boiler.cpp`) porting the recovered
-  algorithm (debounce 4 ticks full / 10 ticks empty, volume threshold 100, timeout decrement 0x14).
+**Why it's deferred:** the simulator proves the UI/config/sensor plumbing
+without it. On real hardware it's the core piece — and it's also what unlocks
+the **live pressure line-chart** (the C++ component can include `lvgl.h` and draw
+on a canvas, which YAML lambdas can't do — see §5 note).
 
-> PID gains are the one remaining unknown — they're constants inside the stock
-  `StateControl` inner loop. They need either one more targeted decompile or
-  empirical tuning on hardware.
+PID gains are the one remaining RE unknown (constants inside the stock inner
+loop); they need one more targeted decompile or empirical tuning.
 
 ---
 
-## 6. `primus.yaml` skeleton (ESPHome 2026.6)
-
-```yaml
-esphome:
-  name: primus
-  friendly_name: WPM Primus
-  build_flags:           # top-level (2026.6 feature), applies to both backends
-    - -O2
-
-esp32:
-  board: esp32-s3-devkitc-1
-  variant: esp32s3
-  framework:
-    type: esp-idf        # REQUIRED for parallel RGB + PSRAM
-  flash_size: 16MB
-  flash_mode: dio        # recovered from image header
-  flash_frequency: 80mhz
-
-psram: true              # framebuffer lives here
-
-# ---- Touch (GT911) ----
-i2c:
-  sda: 6
-  scl: 5
-  scan: true
-touchscreen:
-  - platform: gt911
-    id: primus_touch
-
-# ---- Display (parallel RGB) ----
-display:
-  - platform: mipi_rgb    # current driver (rpi_dpi_rgb is deprecated)
-    id: primus_display
-    data_pins:            # ⚠️ PLACEHOLDER — needs HW probe
-      red:   [,,]         # R0..R4
-      green: [,,,,]       # G0..G5
-      blue:  [,,]         # B0..B4
-    hsync_pin:
-    vsync_pin:
-    de_pin:
-    pclk_pin:
-    # resolution + timing from the panel datasheet once confirmed
-    update_interval: never
-
-# ---- LVGL UI ----
-lvgl:
-  displays: [primus_display]
-  touchscreens: [primus_touch]
-  # 22 screens rebuilt here / in data/ui/
-
-# ---- Actuators / sensors ----
-output:
-  - platform: ledc
-    pin: 4                # pump PWM (confirm role on HW)
-    id: pump_pwm
-    frequency: 50Hz       # tune to stock
-  - platform: ledc
-    pin: 19               # secondary actuator (confirm)
-    id: aux_pwm
-
-sensor:
-  - platform: adc
-    pin: 4                # pressure transducer (confirm vs paddle)
-    id: pressure_adc
-  - platform: adc
-    pin: 19               # paddle position (confirm)
-    id: paddle_adc
-
-binary_sensor:
-  - platform: gpio
-    pin: { number: 42, mode: INPUT_PULLUP }
-    id: switch_42
-
-light:
-  - platform: neopixelbus # status LED
-    type: GRB
-    pin: TODO
-    num_leds: 1
-
-# ---- Networking & maintenance ----
-wifi: { ssid: !secret wifi_ssid, password: !secret wifi_password }
-captive_portal: {}
-web_server: {}
-ota: { platform: esphome }
-
-# ---- The custom brew controller ----
-external_components:
-  - source:
-      type: local
-      path: components
-primus_brew:
-  pump: pump_pwm
-  pressure_sensor: pressure_adc
-  paddle_sensor: paddle_adc
-```
-
----
-
-## 7. What's done vs. what's blocking a first boot
+## 8. What's done vs. what's blocking
 
 | Item | Status |
 |---|---|
-| Platform choice (ESPHome + custom component) | ✅ decided |
+| Platform choice (ESPHome esp-idf) | ✅ |
+| Simulator (SDL2 host) | ✅ runs |
 | Touch (GT911) config | ✅ ready |
-| Calibration math + NVS schema | ✅ ready |
+| Config layer (6 HA numbers) | ✅ |
+| Simulated sensors (pressure/temp/flow/weight) | ✅ |
+| UI: home, brew, settings pages | ✅ |
+| Icons + WiFi topbar | ✅ |
+| Pressure gauge (arc) | ✅ |
+| On-device settings (sliders) | ✅ |
+| Calibration math + NVS schema | ✅ documented |
 | Boiler fill algorithm | ✅ ready to port |
-| Brew mode state machine | ✅ structure ready |
-| `primus.yaml` skeleton | ✅ written (this doc) |
-| **RGB display data-pin pinout** | ⚠️ **BLOCKER** — needs HW probe (logic analyzer / silkscreen) |
-| Pump vs solenoid roles of GPIO4/19 | ⚠️ needs targeted decompile or probe |
+| `primus_brew` C++ component (PID loop) | 🚧 deferred |
+| Live pressure line-chart | 🚧 deferred (needs C++ component) |
+| **RGB display data-pin pinout** | ⚠️ **BLOCKER** for real HW — needs probe |
+| Pump-vs-solenoid roles of GPIO4/19 | ⚠️ needs probe |
 | Flow-meter input pin | ⚠️ needs probe |
-| PID gains | ⚠️ needs inner-loop decompile or empirical tuning |
-| 22 LVGL screens | ⚠️ rebuild work |
+| PID gains | ⚠️ needs decompile or empirical tuning |
+| Remaining LVGL screens (19 of 22) | ⚠️ rebuild work |
 
-**The single gating item for a first display boot is the RGB data-pin map.**
-Everything else can proceed in parallel.
+**Gating item for a first real-hardware boot: the RGB pinout.** Everything else
+can proceed via the simulator.
 
 ---
 
-## 8. Open questions for hardware probing
+## 9. Open questions for hardware probing
 
-1. **RGB panel pinout** — 16 data + 4 timing pins. Method: continuity-check each panel FPC
-   trace to the ESP32-S3 GPIO pad, or capture the parallel bus with a logic analyzer.
-2. **Pressure vs paddle ADC** — which of GPIO4/GPIO19 is which (verify by watching
-   readings while manipulating the paddle vs applying pressure).
-3. **Flow meter** — locate the pulse input (likely a PCNT-capable GPIO).
-4. **NTC thermistor(s)** — confirm ADC channels and the `temp_slope`/`temp_intercept` values.
-5. **Pump control** — is GPIO4/19 a PWM'd vibratory pump or a solenoid on/off?
+1. **RGB panel pinout** — continuity-check each FPC trace to the ESP32-S3 GPIO
+   pad, or capture the parallel bus with a logic analyzer.
+2. **Pressure vs paddle ADC** — which of GPIO4/GPIO19 is which.
+3. **Flow meter** — locate the pulse input (likely PCNT-capable GPIO).
+4. **NTC thermistor(s)** — confirm ADC channels + `temp_slope`/`temp_intercept`.
+5. **Pump control** — PWM'd vibratory pump vs solenoid on/off?
 
-Each can be resolved in minutes with the hardware on a bench. Once #1 is known, the
-`mipi_rgb` block can be filled and the device will render.
+Each resolves in minutes on a bench.
 
 ---
 
 ## References
 - ESPHome `mipi_rgb` display driver — https://esphome.io/components/display/mipi_rgb/
+- ESPHome LVGL cookbook (icons, top_layer) — https://esphome.io/cookbook/lvgl/
 - ESPHome 2026.6.0 changelog — https://esphome.io/changelog/2026.6.0/
 - ESPHome component architecture (loop timing, RTOS tasks) — https://developers.esphome.io/architecture/components/
 - Stock firmware RE details — `docs/PRIMUS_RE_RECOVERED.md`
